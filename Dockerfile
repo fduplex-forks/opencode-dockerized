@@ -5,6 +5,7 @@ FROM debian:bookworm-slim
 # Install base dependencies
 RUN apt-get update && apt-get install -y \
     git \
+    gh \
     curl \
     bash \
     ca-certificates \
@@ -17,6 +18,13 @@ RUN apt-get update && apt-get install -y \
     apt-transport-https \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
+
+# Install git-lfs via packagecloud repository
+RUN bash -e <<EOF
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
+apt-get update && apt-get install -y git-lfs
+rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*
+EOF
 
 # Install Docker CLI only (uses host Docker daemon via mounted socket)
 # We don't need docker-ce (daemon) or containerd.io since we use the host's Docker
