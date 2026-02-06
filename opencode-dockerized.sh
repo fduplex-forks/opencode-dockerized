@@ -6,7 +6,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 IMAGE_NAME="opencode-dockerized:latest"
+BUILDX_INSTANCE="default"
+BUILDX_DRIVER="docker-container"
+
+USER_NAME="coder"
+USER_UID=1000
 
 # Source the shared config module
 source "$SCRIPT_DIR/config-lib.sh"
@@ -45,24 +51,37 @@ check_docker() {
 
 # Function to build the Docker image
 build_image() {
+    if ! docker buildx ls | grep $BUILDX_INSTANCE &>/dev/null; then
+      print_info "Creating docker buildx instance: $BUILDX_INSTANCE"
+      docker buildx create --name $BUILDX_INSTANCE --bootstrap --driver $BUILDX_DRIVER --use
+    else
+      print_info "Using docker buildx instance: $BUILDX_INSTANCE"
+      docker buildx use $BUILDX_INSTANCE
+    fi
+
     print_info "Building OpenCode Docker image..."
-    # Pass build-time timestamp to invalidate cache and force fresh npm install
-    docker build --build-arg "OPENCODE_BUILD_TIME=$(date +%s)" -t "$IMAGE_NAME" "$SCRIPT_DIR"
+    docker buildx build \
+      --build-arg "USER_NAME=$USER_NAME" \
+      --build-arg "USER_UID=$USER_UID" \
+      --build-arg "OPENCODE_BUILD_TIME=$(date +%s)" \
+      -t "$IMAGE_NAME" \
+      "$SCRIPT_DIR"
+
     print_success "Docker image built successfully"
 }
 
 # Function to check required configuration files
 check_config() {
     local missing_files=()
-    
+
     if [ ! -f "$HOME/.config/opencode/opencode.json" ] && [ ! -f "$HOME/.config/opencode/opencode.jsonc" ]; then
         missing_files+=("$HOME/.config/opencode/opencode.json (or opencode.jsonc)")
     fi
-    
+ 
     if [ ! -d "$HOME/.local/share/opencode" ]; then
         missing_files+=("$HOME/.local/share/opencode/")
     fi
-    
+ 
     if [ ${#missing_files[@]} -gt 0 ]; then
         print_warning "Some OpenCode configuration files are missing:"
         for file in "${missing_files[@]}"; do
@@ -70,39 +89,36 @@ check_config() {
         done
         print_info "OpenCode will run but may need configuration. Run 'opencode auth login' inside the container."
     fi
-    
+ 
     # Ensure OpenCode storage directory exists
     # According to docs: https://opencode.ai/docs/troubleshooting/#storage
-    mkdir -p "$HOME/.local/share/opencode" 2>/dev/null || true
-    mkdir -p "$HOME/.cache/opencode" 2>/dev/null || true
+    mkdir -p "$HOME/.local/share/opencode" "$HOME/.cache/opencode" 2>/dev/null
 }
 
 # Function to run OpenCode authentication
 run_auth() {
     print_info "Running OpenCode authentication..."
-    
+
     # Ensure OpenCode directories exist
-    mkdir -p "$HOME/.local/share/opencode" 2>/dev/null || true
-    mkdir -p "$HOME/.cache/opencode" 2>/dev/null || true
-    mkdir -p "$HOME/.config/opencode" 2>/dev/null || true
-    
+    mkdir -p "$HOME/.local/share/opencode" "$HOME/.cache/opencode" "$HOME/.config/opencode" 2>/dev/null
+
     # Parse custom config and build docker arguments
     parse_config
     build_mount_args
     build_env_args
-    
+ 
     # Build volume mount arguments for auth
     local volume_args=""
-    
+
     # OpenCode data directory (read-write for auth storage)
-    volume_args="$volume_args -v $HOME/.local/share/opencode:/home/coder/.local/share/opencode"
-    
+    volume_args="$volume_args -v $HOME/.local/share/opencode:/home/$USER_NAME/.local/share/opencode:rw"
+
     # OpenCode cache directory
-    volume_args="$volume_args -v $HOME/.cache/opencode:/home/coder/.cache/opencode"
-    
+    volume_args="$volume_args -v $HOME/.cache/opencode:/home/$USER_NAME/.cache/opencode:rw"
+
     # OpenCode config directory (for writing opencode.json if needed)
-    volume_args="$volume_args -v $HOME/.config/opencode:/home/coder/.config/opencode"
-    
+    volume_args="$volume_args -v $HOME/.config/opencode:/home/$USER_NAME/.config/opencode:rw"
+
     # Run OpenCode auth login in Docker
     docker run -it --rm \
         --name "opencode-auth-$$" \
@@ -115,39 +131,39 @@ run_auth() {
         "${DOCKER_ENV_ARGS[@]}" \
         "$IMAGE_NAME" \
         opencode auth login
-    
+ 
     print_success "Authentication complete! Your credentials are saved in $HOME/.local/share/opencode"
 }
 
 # Function to run OpenCode
 run_opencode() {
     local project_dir="${1:-$(pwd)}"
-    
+
     # Convert to absolute path
     project_dir="$(cd "$project_dir" && pwd)"
-    
+ 
     # Generate unique container name based on project directory and random suffix
     # Use basename and random suffix to allow multiple instances per directory
     local dir_name=$(basename "$project_dir")
     local random_suffix=$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' ')
     local container_name="opencode-${dir_name}-${random_suffix}"
-    
+ 
     print_info "Starting OpenCode in Docker..."
     print_info "Project directory: $project_dir"
     print_info "Container name: $container_name"
-    
+ 
     # Parse custom config and build docker arguments
     parse_config
     build_mount_args
     build_env_args
-    
+ 
     # Build volume mount arguments - only mount files that exist
-    local volume_args="-v $project_dir:/workspace"
-    
+    local volume_args="-v $project_dir:/workspace:rw"
+ 
     # OpenCode configuration directory (read-only)
     # Includes: opencode.json, AGENTS.md, .env, agent/, command/, plugin/, node_modules/, etc.
     if [ -d "$HOME/.config/opencode" ]; then
-        volume_args="$volume_args -v $HOME/.config/opencode:/home/coder/.config/opencode:ro"
+        volume_args="$volume_args -v $HOME/.config/opencode:/home/$USER_NAME/.config/opencode:ro"
     else
         print_warning "OpenCode config directory not found at $HOME/.config/opencode"
     fi
@@ -155,7 +171,7 @@ run_opencode() {
     # OpenCode data directory (read-write for auth, logs, sessions, storage)
     # Mount entire .local/share/opencode directory
     if [ -d "$HOME/.local/share/opencode" ]; then
-        volume_args="$volume_args -v $HOME/.local/share/opencode:/home/coder/.local/share/opencode"
+        volume_args="$volume_args -v $HOME/.local/share/opencode:/home/$USER_NAME/.local/share/opencode:rw"
     else
         print_warning "OpenCode data directory not found at $HOME/.local/share/opencode"
         print_info "You'll need to run 'opencode auth login' inside the container"
@@ -164,27 +180,27 @@ run_opencode() {
     # OpenCode provider package cache (improves startup time and prevents API errors)
     # See: https://opencode.ai/docs/troubleshooting/#ai_apicallerror-and-provider-package-issues
     if [ -d "$HOME/.cache/opencode" ]; then
-        volume_args="$volume_args -v $HOME/.cache/opencode:/home/coder/.cache/opencode"
+        volume_args="$volume_args -v $HOME/.cache/opencode:/home/$USER_NAME/.cache/opencode:rw"
     fi
-    
+ 
     # MCP authentication directory (optional)
     if [ -d "$HOME/.mcp-auth" ]; then
-        volume_args="$volume_args -v $HOME/.mcp-auth:/home/coder/.mcp-auth:ro"
+        volume_args="$volume_args -v $HOME/.mcp-auth:/home/$USER_NAME/.mcp-auth:ro"
     fi
-    
-    # Gradle properties (optional)
-    if [ -f "$HOME/.gradle/gradle.properties" ]; then
-        volume_args="$volume_args -v $HOME/.gradle/gradle.properties:/home/coder/.gradle/gradle.properties:ro"
+ 
+    # BUN configuration (optional)
+    if [ -f "$HOME/.config/.bunfig.toml" ]; then
+        volume_args="$volume_args -v $HOME/.config/.bunfig.toml:/home/$USER_NAME/.config/.bunfig.toml:ro"
     fi
-    
+ 
     # NPM configuration (optional)
     if [ -f "$HOME/.npmrc" ]; then
-        volume_args="$volume_args -v $HOME/.npmrc:/home/coder/.npmrc:ro"
+        volume_args="$volume_args -v $HOME/.npmrc:/home/$USER_NAME/.npmrc:ro"
     fi
-    
+ 
     # Note: Each run gets a unique container name, so no cleanup needed
     # The --rm flag ensures automatic cleanup when the container exits
-    
+ 
     # Run OpenCode in Docker (without security-opt to allow entrypoint to work)
     # Mount Docker socket to allow Docker-in-Docker operations
     docker run -it --rm \
@@ -204,7 +220,6 @@ run_opencode() {
 # Function to update OpenCode
 update_opencode() {
     print_info "Updating OpenCode..."
-    docker run --rm "$IMAGE_NAME" npm list -g opencode-ai --depth=0
     print_info "Rebuilding image with latest OpenCode..."
     build_image
     print_success "OpenCode updated successfully"
@@ -253,10 +268,10 @@ show_version() {
 # Main script logic
 main() {
     check_docker
-    
+ 
     local command="${1:-run}"
     shift || true
-    
+ 
     case "$command" in
         run)
             check_config

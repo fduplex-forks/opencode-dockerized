@@ -17,7 +17,7 @@ bash -n script.sh                       # Test shell script syntax
 ## Code Style Guidelines
 
 ### Shell Scripts
-- Use `#!/bin/bash` and `set -e` at start for error handling
+- Use `#!/usr/bin/env bash` and `set -e` at start for error handling
 - Quote all variables: `"$variable"` not `$variable`; use `$()` not backticks
 - Use absolute paths: `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`
 - Function names: `check_docker()`, `build_image()`, `print_error()` (snake_case)
@@ -35,7 +35,7 @@ bash -n script.sh                       # Test shell script syntax
 - INI-style config format: `key.name=value` (not YAML or JSON to avoid dependencies)
 
 ### Dockerfile
-- Use specific versions: `debian:bookworm-slim` not `latest`
+- Use specific versions: `debian:trixie-slim` not `latest`
 - Install Docker CLI only (not daemon): `docker-ce-cli` not `docker-ce`
 - Clean up in same RUN layer: `&& rm -rf /var/lib/apt/lists/*`
 - Non-root user with UID/GID mapping via entrypoint
@@ -47,4 +47,3 @@ bash -n script.sh                       # Test shell script syntax
 - Container uses non-root user with host UID/GID matching
 - Allow users to mount custom paths read-only by default
 - Only pass environment variables explicitly listed in config
-
