@@ -10,6 +10,8 @@ ARG OPENCODE_BUILD_TIME
 ARG GIT_LFS_INSTALL_SRC="https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh"
 ARG DOCKER_REPO="https://download.docker.com/linux/debian"
 ARG OPENCODE_INSTALL_SRC="https://opencode.ai/install"
+ARG AWS_CLI_SRC="https://awscli.amazonaws.com"
+
 ARG DEBIAN_FRONTEND="noninteractive"
 
 ENV USER_NAME="${USER_NAME}"
@@ -17,7 +19,7 @@ ENV USER_NAME="${USER_NAME}"
 # Install base dependencies
 RUN bash -e <<EOF
 apt-get install -Uy \
-    git gh curl ca-certificates sudo zip unzip wget gnupg lsb-release apt-transport-https
+    git gh curl ca-certificates sudo zip unzip wget gnupg lsb-release apt-transport-https groff less
 rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/*
 EOF
 
@@ -53,6 +55,15 @@ WORKDIR /workspace
 
 # Switch back to root for entrypoint setup
 USER root
+
+RUN bash <<EOF
+cd /usr/local/src
+curl "${AWS_CLI_SRC}/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+rm -rf aws*
+EOF
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
