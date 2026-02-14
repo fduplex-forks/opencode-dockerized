@@ -137,7 +137,13 @@ run_auth() {
 
 # Function to run OpenCode
 run_opencode() {
-    local project_dir="${1:-$(pwd)}"
+    declare \
+      project_dir="$(pwd)" \
+      oc_command=(opencode)
+
+    if [[ $1 == 'web' ]]; then
+      oc_command+=(web --hostname 0.0.0.0 --port "${2:-9101}")
+    fi
 
     # Convert to absolute path
     project_dir="$(cd "$project_dir" && pwd)"
@@ -214,7 +220,7 @@ run_opencode() {
         "${DOCKER_MOUNT_ARGS[@]}" \
         "${DOCKER_ENV_ARGS[@]}" \
         "$IMAGE_NAME" \
-        opencode
+        "${oc_command[@]}"
 }
 
 # Function to update OpenCode
@@ -276,6 +282,10 @@ main() {
         run)
             check_config
             run_opencode "$@"
+            ;;
+        web)
+            check_config
+            run_opencode web "$@"
             ;;
         auth)
             run_auth
