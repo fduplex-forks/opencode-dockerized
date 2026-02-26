@@ -8,7 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 IMAGE_NAME="opencode-dockerized:latest"
-BUILDX_INSTANCE="default"
+BUILDX_INSTANCE="local"
 BUILDX_DRIVER="docker-container"
 
 USER_NAME="coder"
@@ -51,16 +51,15 @@ check_docker() {
 
 # Function to build the Docker image
 build_image() {
-    if ! docker buildx ls | grep $BUILDX_INSTANCE &>/dev/null; then
+    if ! docker buildx use $BUILDX_INSTANCE &>/dev/null; then
       print_info "Creating docker buildx instance: $BUILDX_INSTANCE"
       docker buildx create --name $BUILDX_INSTANCE --bootstrap --driver $BUILDX_DRIVER --use
     else
       print_info "Using docker buildx instance: $BUILDX_INSTANCE"
-      docker buildx use $BUILDX_INSTANCE
     fi
 
     print_info "Building OpenCode Docker image..."
-    docker buildx build \
+    docker buildx build --load \
       --build-arg "USER_NAME=$USER_NAME" \
       --build-arg "USER_UID=$USER_UID" \
       --build-arg "OPENCODE_BUILD_TIME=$(date +%s)" \
