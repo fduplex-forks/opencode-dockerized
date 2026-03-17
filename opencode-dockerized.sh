@@ -202,6 +202,12 @@ run_opencode() {
     if [ -f "$HOME/.npmrc" ]; then
         volume_args="$volume_args -v $HOME/.npmrc:/home/$USER_NAME/.npmrc:ro"
     fi
+
+    # Python packages requirements file (optional)
+    # Processed by entrypoint.sh to install additional Python packages at startup
+    if [ -f "$CONFIG_DIR/python-packages.txt" ]; then
+        volume_args="$volume_args -v $CONFIG_DIR/python-packages.txt:/home/$USER_NAME/.config/opencode-dockerized/python-packages.txt:ro"
+    fi
  
     # Note: Each run gets a unique container name, so no cleanup needed
     # The --rm flag ensures automatic cleanup when the container exits

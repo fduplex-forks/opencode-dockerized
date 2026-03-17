@@ -205,6 +205,7 @@ TERM=xterm-256color
 | `~/.cache/opencode/` | `/home/coder/.cache/opencode/` | read-write | Provider package cache |
 | `~/.gradle/gradle.properties` | `/home/coder/.gradle/gradle.properties` | read-only | Gradle config |
 | `~/.npmrc` | `/home/coder/.npmrc` | read-only | NPM config |
+| `~/.config/opencode-dockerized/python-packages.txt` | `/home/coder/.config/opencode-dockerized/python-packages.txt` | read-only | Runtime Python packages |
 
 
 ### Custom Global Configuration (Optional)
@@ -337,21 +338,64 @@ Update scripts to use `yourusername/opencode-dockerized:latest`
 
 ## 🔍 Advanced Usage
 
-### Adding Additional Tools
+### Python Environment
 
-Edit `Dockerfile`:
+The container includes **Python 3.11** (managed by [uv](https://docs.astral.sh/uv/)), available globally:
+
+```bash
+python3 --version          # Python 3.11.x (globally available)
+uv pip install pandas      # Install into global venv (no flags needed)
+python3 -c "import boto3"  # boto3 is pre-installed
+```
+
+**How it works:**
+- `uv` is installed at `/usr/local/bin/uv`
+- Python 3.11 is managed by uv with symlinks at `/usr/local/bin/python3` and `/usr/local/bin/python`
+- A global virtual environment at `/opt/venv` is the default target for all `uv pip install` commands (via the `VIRTUAL_ENV` environment variable)
+- `/opt/venv/bin` is on `PATH`, so any installed CLI tools are immediately available
+- `boto3` is pre-installed at build time as a baseline package
+
+**Installing additional packages at startup:**
+
+Create `~/.config/opencode-dockerized/python-packages.txt` on the host:
+
+```
+# PyPI packages
+httpie>=3.0
+
+# Local projects (editable install from mounted paths)
+/opt/cognee
+```
+
+Lines starting with `/` are installed as editable (`-e`) from local paths — useful for development projects mounted into the container. All other lines are treated as PyPI package specifiers.
+
+For local projects, add a corresponding mount in your config:
+```ini
+# ~/.config/opencode-dockerized/config
+mount.cognee=/path/to/cognee:/opt/cognee:rw
+```
+
+The file is automatically detected and processed by the entrypoint on each container start (~1-2s per package).
+
+**Ad-hoc installs during a session:**
+
+Agents can install packages at any time without special flags:
+```bash
+uv pip install requests     # Installs into /opt/venv, immediately available
+```
+
+### Adding Additional System Tools
+
+Edit `Dockerfile` to add system packages:
 
 ```dockerfile
 RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    bash \
-    ca-certificates \
-    python3 \
-    python3-pip \
     jq \
     && rm -rf /var/lib/apt/lists/*
 ```
+
+> **Note:** Python is already included via uv. Do not install `python3` or
+> `python3-pip` via apt — use `uv pip install` instead.
 
 ### Using Different Base Images
 
@@ -424,7 +468,7 @@ docker build --no-cache -t opencode-dockerized:latest .
 
 ### Core Files
 
-- **`Dockerfile`** - Container image definition (Node.js 20 + OpenCode)
+- **`Dockerfile`** - Container image definition (Debian + Git + Docker CLI + AWS CLI + Python 3.11/uv + OpenCode)
 - **`entrypoint.sh`** - UID/GID mapping for file permissions
 
 ### User Scripts
@@ -450,13 +494,14 @@ docker build --no-cache -t opencode-dockerized:latest .
 
 ### How It Works
 
-1. **Base Image**: Uses Debian Bookworm slim for minimal footprint
+1. **Base Image**: Uses Debian trixie-slim for minimal footprint
 2. **Docker CLI Only**: Installs only Docker CLI (uses host's Docker daemon via socket)
-3. **Development Tools**: Includes Node.js (via NVM), Java (via SDKMAN), Git, and essential tools
-4. **OpenCode Installation**: Installs latest OpenCode via npm
-5. **User Management**: Creates non-root `coder` user with UID/GID matching
-6. **Entrypoint**: Adjusts permissions and switches to non-root user
-7. **Volume Mounting**: Mounts only necessary directories with appropriate permissions
+3. **Development Tools**: Includes Git, GitHub CLI, AWS CLI, and essential tools
+4. **Python Environment**: Python 3.11 via uv with global venv and boto3 baseline
+5. **OpenCode Installation**: Installs latest OpenCode via official installer
+6. **User Management**: Creates non-root `coder` user with UID/GID matching
+7. **Entrypoint**: Adjusts permissions, installs runtime Python packages, and switches to non-root user
+8. **Volume Mounting**: Mounts only necessary directories with appropriate permissions
 
 ### The Blast Radius Concept
 

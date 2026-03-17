@@ -57,7 +57,39 @@ fi
 # The workspace is a host mount and should maintain host permissions
 # OpenCode runs as the host user (via UID/GID mapping) so it already has the right permissions
 
+# Fix ownership of Python virtual environment so the runtime user can install packages
+if [ -d /opt/venv ]; then
+    chown -R "$TARGET_UID:$TARGET_GID" /opt/venv 2>/dev/null || true
+fi
+
+# Install runtime Python packages from requirements file (if mounted)
+# Lines starting with / are installed as editable (-e) from local paths.
+# All other lines are treated as PyPI package specifiers.
+PYTHON_PACKAGES_FILE="/home/$USER_NAME/.config/opencode-dockerized/python-packages.txt"
+if [ -f "$PYTHON_PACKAGES_FILE" ]; then
+    echo "Installing Python packages..."
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Strip comments and whitespace
+        line="${line%%#*}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [ -z "$line" ] && continue
+
+        if [[ "$line" == /* ]]; then
+            echo "  editable: $line"
+            uv pip install -e "$line" 2>&1 | tail -1
+        else
+            echo "  package: $line"
+            uv pip install "$line" 2>&1 | tail -1
+        fi
+    done < "$PYTHON_PACKAGES_FILE"
+    echo "Python packages installed."
+fi
+
 # Switch to regular user and execute the command
+# VIRTUAL_ENV and PATH are also set via /etc/profile.d/python-venv.sh for login shells,
+# but we pass them explicitly here to ensure they survive regardless of shell mode.
 exec setpriv --reuid="$TARGET_UID" --regid="$TARGET_GID" --init-groups \
   env HOME="/home/$USER_NAME" USER="$USER_NAME" LOGNAME="$USER_NAME" \
+      VIRTUAL_ENV="/opt/venv" PATH="/opt/venv/bin:$PATH" \
   bash -lic 'exec "$@"' -- "$@"

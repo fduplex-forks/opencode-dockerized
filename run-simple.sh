@@ -56,6 +56,11 @@ VOLUME_ARGS="-v $PROJECT_DIR:/workspace"
 [ -f "$HOME/.npmrc" ] && \
     VOLUME_ARGS="$VOLUME_ARGS -v $HOME/.npmrc:/home/coder/.npmrc:ro"
 
+# Python packages requirements file (optional)
+# Processed by entrypoint.sh to install additional Python packages at startup
+[ -f "$HOME/.config/opencode-dockerized/python-packages.txt" ] && \
+    VOLUME_ARGS="$VOLUME_ARGS -v $HOME/.config/opencode-dockerized/python-packages.txt:/home/coder/.config/opencode-dockerized/python-packages.txt:ro"
+
 # Custom mounts and env vars from config
 # (Already built by build_mount_args and build_env_args above)
 

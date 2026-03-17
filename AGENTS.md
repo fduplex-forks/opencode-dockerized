@@ -41,6 +41,14 @@ bash -n script.sh                       # Test shell script syntax
 - Non-root user with UID/GID mapping via entrypoint
 - Document security/architecture in comments
 
+### Python Environment
+- Python 3.11 is available globally via `/usr/local/bin/python3` (managed by uv)
+- `uv` is at `/usr/local/bin/uv` — use it for package management
+- The global venv at `/opt/venv` is the default target for `uv pip install` (via `VIRTUAL_ENV` env var)
+- Baseline packages (boto3) are installed at build time
+- Additional packages can be installed at runtime via `~/.config/opencode-dockerized/python-packages.txt`
+- Ad-hoc installs work: `uv pip install <package>` — no flags needed
+
 ### Security
 - Mount configs read-only (`:ro`), never commit `.env` or `auth.json`
 - Use host Docker socket (no privileged mode or Docker-in-Docker)

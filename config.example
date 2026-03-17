@@ -38,6 +38,9 @@
 #   mount.gitconfig=~/.gitconfig:/home/coder/.gitconfig
 #   mount.gradle=~/.gradle/gradle.properties:/home/coder/.gradle/gradle.properties
 #
+# Python project mounts (for editable installs via python-packages.txt):
+#   mount.cognee=/mnt/projects/FDM/cognee:/opt/cognee:rw
+#
 # mount.gitconfig=~/.gitconfig:/home/coder/.gitconfig
 
 # ============================================
@@ -59,3 +62,20 @@
 #
 # env.context7=CONTEXT7_API_KEY
 # env.aws_bedrock=AWS_BEARER_TOKEN_BEDROCK
+
+# ============================================
+# Python Packages (Separate File)
+# ============================================
+# Additional Python packages can be installed at container startup by creating:
+#   ~/.config/opencode-dockerized/python-packages.txt
+#
+# The file is automatically mounted and processed by the entrypoint.
+# Lines starting with / are installed as editable (-e) from local paths.
+# All other lines are treated as PyPI package specifiers.
+#
+# Example python-packages.txt:
+#   /opt/cognee                  # local project (needs matching mount above)
+#   httpie>=3.0                  # PyPI package
+#
+# The container already includes Python 3.11, uv, and boto3 at build time.
+# Packages installed via this file are added on each container start (~1-2s).

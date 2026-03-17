@@ -64,6 +64,40 @@ unzip awscliv2.zip
 rm -rf aws*
 EOF
 
+# ── Python environment (via uv) ──────────────────────────────────────
+# uv: fast Python package manager (single static binary, no dependencies)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Where uv stores the managed Python installation
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+# Put python/python3 symlinks in /usr/local/bin (globally available)
+ENV UV_PYTHON_BIN_DIR=/usr/local/bin
+# Performance: compile bytecode, use copy mode (needed for bind-mounted sources)
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Install Python 3.11 with global symlinks (python, python3 → /usr/local/bin)
+RUN uv python install 3.11 --default
+
+# Create global virtual environment for packages
+# All uv pip install commands target this venv by default via VIRTUAL_ENV
+RUN uv venv /opt/venv --python 3.11
+
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Ensure venv PATH survives login shells (bash -l re-reads /etc/profile which resets PATH)
+RUN echo 'export VIRTUAL_ENV=/opt/venv' > /etc/profile.d/python-venv.sh && \
+    echo 'export PATH="/opt/venv/bin:$PATH"' >> /etc/profile.d/python-venv.sh && \
+    chmod +x /etc/profile.d/python-venv.sh
+
+# Install baseline packages (always available in the container)
+RUN uv pip install boto3
+
+# Make the venv world-writable so the runtime user can install packages ad-hoc
+# (The actual user UID is determined at runtime via entrypoint.sh)
+RUN chmod -R a+rwX /opt/venv
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
